@@ -652,7 +652,7 @@ class lineageTree(object):
     
     def to_binary(self, fname, starting_points = None):    
         if starting_points is None:
-            starting_points = [c for c in self.successor.iterkeys() if self.predecessor.get(c, []) != []]
+            starting_points = [c for c in self.successor.iterkeys() if self.predecessor.get(c, []) == []]
         number_sequence = [-1]
         pos_sequence = []
         time_sequence = []
@@ -664,14 +664,13 @@ class lineageTree(object):
                 curr_c = to_treat.pop()
                 number_sequence.append(curr_c)
                 pos_sequence += list(self.pos[curr_c])
-                if not curr_c in self.successor:
+                if self.successor.get(curr_c, []) == []:
                     number_sequence.append(-1)
                 elif len(self.successor[curr_c]) == 1:
                     to_treat += self.successor[curr_c]
                 else:
                     number_sequence.append(-2)
                     to_treat += self.successor[curr_c]
-
         remaining_nodes = set(self.nodes) - set(number_sequence)
 
         for c in remaining_nodes:
