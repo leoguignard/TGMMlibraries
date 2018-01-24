@@ -4,7 +4,6 @@ import xml.etree.ElementTree as ET
 from copy import copy
 from scipy import spatial
 import numpy as np
-from scipy import ndimage as nd
 from multiprocessing import Pool
 from scipy.spatial import Delaunay
 from itertools import combinations
