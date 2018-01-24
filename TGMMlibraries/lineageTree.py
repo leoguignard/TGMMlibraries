@@ -5,318 +5,45 @@ from copy import copy
 from scipy import spatial
 import numpy as np
 from scipy import ndimage as nd
-from matplotlib import pyplot as plt
-import networkx as nx
 from multiprocessing import Pool
 from scipy.spatial import Delaunay
 from itertools import combinations
 import struct
 
-def single_cell_propagation_BU(params):
-    kdtree.node = kdtree.KDTree.node
-    kdtree.leafnode = kdtree.KDTree.leafnode
-    kdtree.innernode = kdtree.KDTree.innernode
-    C, idx3d, nb_max, dist_max, to_check_self, R, pos, posVF, successor, predecessor = params
-    dists, closest_cells = idx3d.query(posVF[C], nb_max)
-    if (dists<dist_max).any():
-        closest_cells = np.array(to_check_self)[list(closest_cells)]
-        max_value = np.max(np.where(dists<dist_max))
-        cells_to_keep = closest_cells[:max_value]
-        # med = median_average_bw(cells_to_keep, R, pos)
-        # print type (cells_to_keep)
-        subset_dist = [np.mean([pos[cii] for cii in predecessor[ci]], axis=0) - pos[ci] for ci in cells_to_keep if not ci in R]
-        if subset_dist != []:
-            med_distance = spatial.distance.squareform(spatial.distance.pdist(subset_dist))
-            med = subset_dist[np.argmin(np.sum(med_distance, axis=0))]
-        else:
-            med = np.array([0, 0, 0])
-    else:
-        med = np.array([0, 0, 0])
-    return C, med
-
-
-def build_VF_propagation_backward(LT, t_b=0, t_e=200, nb_max=20, dist_max=200, nb_proc = 8):
-    if (not hasattr(LT, 'VF')) or LT.VF == None:
-        LT.VF = lineageTree(None, None, None)
-        starting_cells = LT.time_nodes[t_b]
-        unique_id = 0
-        LT.VF.time_nodes = {t_b: []}
-        for C in starting_cells:
-            # C_tmp = CellSS(unique_id=unique_id, id=unique_id, M=LT.VF.R, time = t_b, pos = C.pos)
-            i = LT.VF.get_next_id()
-            LT.VF.nodes.append(i)
-            LT.VF.time_nodes[t_b].append(i)
-            LT.VF.roots.append(i)
-            LT.VF.pos[i]=LT.pos[C]
-
-    from time import time
-
-    # Hack to allow pickling of kdtrees for muLTiprocessing
-    kdtree.node = kdtree.KDTree.node
-    kdtree.leafnode = kdtree.KDTree.leafnode
-    kdtree.innernode = kdtree.KDTree.innernode
-
-    gg_line = '\rGG done (%.2f s); '
-    prop_line = 'P done (%.2f s); '
-    SD_line = 'SD done (%.2f s); '
-    fusion_line = 'F done (%.2f s); '
-    nb_cells_line = '#C: %d'
-
-    full_length = len(gg_line) + len(prop_line) + len(SD_line) + len(fusion_line) + len(nb_cells_line)
-
-    
-    for t in range(t_b, t_e, -1):
-        # if t!=t_b and t%10 == 0:
-        #     print t
-        # else:
-        #     print t,
-        tic = time()
-        print t, ': ',
-        to_check_VF = LT.VF.time_nodes[t]
-
-        idx3d, to_check_LT = LT.get_idx3d(t)
-
-        LT.VF.time_nodes[t-1] = []
-        mapping = []
-        # tmp = np.array(to_check_LT)
-
-        Gabriel_graph = LT.get_gabriel_graph(t)
-
-        sys.stdout.write('\b'*(full_length) + ' '*(full_length))
-        sys.stdout.flush()
-
-        sys.stdout.write(gg_line%(time() - tic))
-        sys.stdout.flush()
-
-        tagged = {}
-        cell_mapping_LT_VF = {}
-        for C in to_check_VF:
-            C_LT = to_check_LT[idx3d.query(LT.VF.pos[C])[1]]
-            cell_mapping_LT_VF.setdefault(C_LT, []).append(C)
-            # mapping += [(C, idx3d, nb_max, dist_max, tmp, LT.roots, LT.pos, LT.VF.pos, LT.successor, LT.LT.predecessor)]
-            if not tagged.get(C_LT, False):
-                mapping += [(C_LT, np.array(list(Gabriel_graph.get(C_LT, []))), dist_max)]
-                tagged[C_LT] = True
-
-        out = []
-
-        if nb_proc<2:
-            for params in mapping:
-              out += [single_cell_propagation(params)]
-        else:
-            pool = Pool(processes=nb_proc)
-            out = pool.map(single_cell_propagation, mapping)
-            pool.terminate()
-            pool.close()
-            # out= out.get()
-        for C_LT, med in out:
-            for C_VF in cell_mapping_LT_VF[C_LT]:
-                LT.VF.add_node(t-1, C_VF, LT.VF.pos[C_VF] + med)
-            # C_next = LT.VF.get_next_id()
-            # # C_next = CellSS(unique_id, unique_id, M=C, time = t-1, pos= C.pos + med)
-            # LT.VF.time_nodes[t-1].append(C_next)
-            # LT.VF.successor.setdefauLT(C, []).append(C_next)
-            # LT.VF.edges.append((C, C_next))
-            # LT.VF.nodes.append(C_next)
-            # LT.VF.pos[C_next] = LT.VF.pos[C] + med
-
-        idx3d, to_check_LT = LT.get_idx3d(t-1)
-        to_check_VF = LT.VF.time_nodes[t-1]
-
-        sys.stdout.write(prop_line%(time() - tic))
-        sys.stdout.flush()
-
-        if not LT.spatial_density.has_key(to_check_LT[0]):
-            LT.compute_spatial_density(t-1, t-1, nb_max)
-
-        sys.stdout.write(SD_line%(time() - tic))
-        sys.stdout.flush()
-
-
-        idx3d, to_check_VF = LT.VF.get_idx3d(t-1)[:2]
-        dist_to_VF, equivalence = idx3d.query([LT.pos[c] for c in to_check_LT], 1)
-        tmp = np.array([dist_to_VF[i]/LT.spatial_density[c] for i, c in enumerate(to_check_LT)])
-        to_add = [to_check_LT[i] for i in np.where(tmp>1.25)[0]]
-        for C in to_add:
-            LT.VF.add_node(t-1, None, LT.pos[C])
-
-        # idx3d, to_check_LT = LT.get_idx3d(t-1)
-        # to_check_VF = LT.VF.time_nodes[t-1]
-
-        # dist_to_VF, equivalence = idx3d.query([LT.VF.pos[c] for c in to_check_VF], 1)
-        # # equivalence = equivalence[:,1]
-
-        # count = np.bincount(equivalence)
-        # LT_too_close, = np.where(count > 1)
-        # TMP = []
-        # for C_LT in LT_too_close:
-        #     to_potentially_fuse, = np.where(equivalence == C_LT)
-        #     pos_tmp = [LT.VF.pos[to_check_VF[c]] for c in to_potentially_fuse]
-        #     dist_tmp = spatial.distance.squareform(spatial.distance.pdist(pos_tmp))
-        #     dist_tmp[dist_tmp==0] = np.inf
-        #     if (dist_tmp<LT.spatial_density[to_check_LT[C_LT]]/2.).any():
-        #         to_fuse = np.where(dist_tmp == np.min(dist_tmp))[0]
-        #         c1, c2 = to_potentially_fuse[list(to_fuse)][:2]
-        #         to_check_VF[c1], to_check_VF[c2]
-        #         TMP.append([to_check_VF[c1], to_check_VF[c2]])
-
-        # for c1, c2 in TMP:
-        #     # new_pos = np.mean([LT.VF.pos[c1], LT.VF.pos[c2]], axis = 0)
-        #     if c1 != c2:
-        #         LT.VF.fuse_nodes(c1, c2)
-
-        sys.stdout.write(fusion_line%(time() - tic))
-        sys.stdout.flush()
-        
-        sys.stdout.write(nb_cells_line%i)
-        sys.stdout.flush()
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-
-        # if len([k for k, s in LT.VF.successor.iteritems() if len(s)>1]) > 0:
-        #     print 'oupsies t:', t
-
-
-    LT.VF.t_b = t_b
-    LT.VF.t_e = t_e
-
-    return LT.VF
-
-
-def get_gabriel_graph_for_parallel(params):
-    t = params
-    if not hasattr(LT, 'Gabriel_graph'):
-        LT.Gabriel_graph = {}
-
-    if not LT.Gabriel_graph.has_key(t):
-        idx3d, nodes = LT.get_idx3d(t)
-
-        data_corres = {}
-        data = []
-        for i, C in enumerate(nodes):
-            data.append(LT.pos[C])
-            data_corres[i] = C
-
-        tmp = Delaunay(data)
-
-        delaunay_graph = {}
-
-        for N in tmp.simplices:
-            for e1, e2 in combinations(np.sort(N), 2):
-                delaunay_graph.setdefault(e1, set([])).add(e2)
-
-        Gabriel_graph = {}
-
-        for e1, ni in delaunay_graph.iteritems():
-            ni = list(ni)
-            pos_e1 = data[e1]
-            distances = np.array([LT._dist_v(pos_e1, data[e2]) for e2 in ni])
-            sorted_neighbs = list(np.array(ni)[np.argsort(distances)])
-            tmp_pt = sorted_neighbs.pop(0)
-            while not tmp_pt is None:
-                if len(idx3d.query_ball_point((data[tmp_pt] + pos_e1)/2., (LT._dist_v(pos_e1, data[tmp_pt])/2)-10**-1))==0:
-                    Gabriel_graph.setdefault(nodes[e1], set()).add(nodes[tmp_pt])
-                    Gabriel_graph.setdefault(nodes[tmp_pt], set()).add(nodes[e1])
-                if sorted_neighbs != []:
-                    tmp_pt = sorted_neighbs.pop(0)
-                else:
-                    tmp_pt = None
-    else:
-        Gabriel_graph = LT.Gabriel_graph[t]
-
-    return t, Gabriel_graph
-
-
-def get_gabriel_graph(LT, t):
-    if not hasattr(LT, 'Gabriel_graph'):
-        LT.Gabriel_graph = {}
-
-    if not LT.Gabriel_graph.has_key(t):
-        idx3d, nodes = LT.get_idx3d(t)
-
-        data_corres = {}
-        data = []
-        for i, C in enumerate(nodes):
-            data.append(LT.pos[C])
-            data_corres[i] = C
-
-        tmp = Delaunay(data)
-
-        delaunay_graph = {}
-
-        for N in tmp.simplices:
-            for e1, e2 in combinations(np.sort(N), 2):
-                delaunay_graph.setdefault(e1, set([])).add(e2)
-
-        Gabriel_graph = {}
-
-        for e1, ni in delaunay_graph.iteritems():
-            ni = list(ni)
-            pos_e1 = data[e1]
-            distances = np.array([LT._dist_v(pos_e1, data[e2]) for e2 in ni])
-            sorted_neighbs = list(np.array(ni)[np.argsort(distances)])
-            tmp_pt = sorted_neighbs.pop(0)
-            while not tmp_pt is None and len(idx3d.query_ball_point((data[tmp_pt] + pos_e1)/2., (LT._dist_v(pos_e1, data[tmp_pt])/2)-10**-3))<=2:
-                Gabriel_graph.setdefault(nodes[e1], set()).add(nodes[tmp_pt])
-                Gabriel_graph.setdefault(nodes[tmp_pt], set()).add(nodes[e1])
-                if sorted_neighbs != []:
-                    tmp_pt = sorted_neighbs.pop(0)
-                else:
-                    tmp_pt = None
-
-        LT.Gabriel_graph[t] = Gabriel_graph
-
-    return LT.Gabriel_graph[t]
-
-def parallel_gabriel_graph_preprocess(LT, nb_proc = 20):
-    mapping = []
-    if not hasattr(LT, 'Gabriel_graph'):
-        LT.Gabriel_graph = {}
-    for t in xrange(LT.t_b, LT.t_e + 1):
-        if not LT.Gabriel_graph.has_key(t):
-            mapping += [(t)]
-    if nb_proc<2:
-        out = []
-        for params in mapping:
-          out += [get_gabriel_graph_for_parallel(params)]
-    else:
-        pool = Pool(processes=nb_proc)
-        out = pool.map(get_gabriel_graph_for_parallel, mapping)
-        pool.terminate()
-        pool.close()
-    for t, G_g in out:
-        LT.Gabriel_graph[t] = G_g
-
-def single_cell_propagation(params):
-    C, closest_cells, dist_max = params
-    # closest_cells = np.array(list(Gabriel_graph[C]))
-    dists = np.array([np.sum((LT.pos[C]-LT.pos[n])**2)**.5 for n in closest_cells])
-    if (dists<dist_max).any():
-        cells_to_keep = closest_cells[np.where(dists<dist_max)]
-        subset_dist = [np.mean([LT.pos[cii] for cii in LT.predecessor[ci]], axis=0) - LT.pos[ci] for ci in cells_to_keep if not LT.is_root[ci]]
-        if subset_dist != []:
-            med_distance = spatial.distance.squareform(spatial.distance.pdist(subset_dist))
-            med = subset_dist[np.argmin(np.sum(med_distance, axis=0))]
-        else:
-            med = np.array([0, 0, 0])
-    else:
-        med = np.array([0, 0, 0])
-    return C, med
-
 class lineageTree(object):
-    """docstring for lineageTree"""
-
+    ''' lineageTree is a class container for lineage tree structures
+        The main attributes are the following:
+        self.nodes: [int, ], list of node/cell ids
+        self.edges: [(int, int), ], a list of couple of cell/objects ids that represents the edges
+        self.time_nodes: {int, [int, ]}, a dictionary that maps time points to
+            a list of cell ids that belong to that time point
+        self.time_edges: {int, [(int, int), ]}, a dictionary that maps time points to
+            a list of edges couples that belong to that time point
+        self.successor: {int, [int, ]}, a dictionary that maps a cell id to
+            the list of its successors in time
+        self.predecessor: {int, [int, ]}, a dictionary that maps a cell id to
+            the list of its predecessors in time
+        self.time: {int: int, }, a dictionary that maps a cell to the time
+            it belongs to.
+    '''
 
     def _dist_v(self, v1, v2):
+        ''' Computes the L2 norm between two vectors v1 and v2
+            Args:
+                v1: [float, ], list of values for the first vector
+                v2: [float, ], list of values for the second vector
+            Return:
+                float: L2 norm between v1 and v2
+        '''
         v1 = np.array(v1)
         v2 = np.array(v2)
         return np.sum((v1-v2)**2)**(.5)
 
-    def copy_cell(self, C, links=[]):
-        C_tmp = copy(C)
-        self.nodes.append(C)
-
     def get_next_id(self):
+        ''' Computes the next authorized id.
+            Returns:
+                int, next authorized id
+        '''
         if self.next_id == []:
             self.max_id += 1
             return self.max_id
@@ -324,6 +51,18 @@ class lineageTree(object):
             return self.next_id.pop()
 
     def add_node(self, t, succ, pos, id = None, reverse = False):
+        ''' Adds a node to the lineageTree and update it accordingly.
+            Args:
+                t: int, time to which to add the node
+                succ: id of the node the new node is a successor to
+                pos: [float, ], list of three floats representing the 3D spatial position of the node
+                id: id value of the new node, to be used carefully, 
+                    if None is provided the new id is automatically computed.
+                reverse: bool, True if in this lineageTree the predecessors are the successors and reciprocally.
+                    This is there for bacward compatibility, should be left at False.
+            Returns:
+                C_next: int, id of the new node.
+        '''
         if id is None:
             C_next = self.get_next_id()
         else:
@@ -346,6 +85,10 @@ class lineageTree(object):
         return C_next
 
     def remove_node(self, c):
+        ''' Removes a node and update the lineageTree accordingly
+            Args:
+                c: int, id of the node to remove
+        '''
         self.nodes.remove(c)
         self.time_nodes[self.time[c]].remove(c)
         # self.time_nodes.pop(c, 0)
@@ -372,6 +115,12 @@ class lineageTree(object):
         return e_to_remove, succ, s_to_remove, pred, p_to_remove, pos
 
     def fuse_nodes(self, c1, c2):
+        ''' Fuses together two nodes that belong to the same time point
+            and update the lineageTree accordingly.
+            Args:
+                c1: int, id of the first node to fuse
+                c2: int, id of the second node to fuse
+        '''
         e_to_remove, succ, s_to_remove, pred, p_to_remove, c2_pos = self.remove_node(c2)
         for e in e_to_remove:
             new_e = [c1] + [other_c for other_c in e if e != c2]
@@ -391,13 +140,16 @@ class lineageTree(object):
         self.progeny[c1] += 1
 
     def to_tlp(self, fname, t_min=-1, t_max=np.inf, temporal=True, spatial=False, VF=False):
-        """
+        '''
         Write a lineage tree into an understable tulip file
-        fname : path to the tulip file to create
-        lin_tree : lineage tree to write
-        properties : dictionary of properties { 'Property name': [{c_id: prop_val}, default_val]}
-        """
-        
+        Args:
+            fname: string, path to the tulip file to create
+            t_min: int, minimum time to consider, default -1
+            t_max: int, maximum time to consider, default np.inf
+            temporal: boolean, True if the temporal links should be printed, default True
+            spatial: boolean, True if the special links should be printed, default True
+            VF: boolean, useless
+        '''
         f=open(fname, "w")
 
         f.write("(tlp \"2.0\"\n")
@@ -423,11 +175,6 @@ class lineageTree(object):
 
         for i, e in enumerate(edges_to_use):
             f.write("(edge " + str(i) + " " + str(e[0]) + " " + str(e[1]) + ")\n")
-        # f.write("(property 0 int \"id\"\n")
-        # f.write("\t(default \"0\" \"0\")\n")
-        # for n in nodes_to_use:
-        #     f.write("\t(node " + str(n) + str(" \"") + str(self.n) + "\")\n")
-        # f.write(")\n")
 
         f.write("(property 0 int \"time\"\n")
         f.write("\t(default \"0\" \"0\")\n")
@@ -448,20 +195,13 @@ class lineageTree(object):
             f.write("\t(edge " + str(i) + str(" \"") + str(d_tmp) + "\")\n")
             f.write("\t(node " + str(e[0]) + str(" \"") + str(d_tmp) + "\")\n")
         f.write(")\n")
-
-        # for property in properties:
-        #     prop_name=property[0]
-        #     vals=property[1]
-        #     default=property[2]
-        #     f.write("(property 0 string \""+prop_name+"\"\n")
-        #     f.write("\t(default \""+str(default)+"\" \"0\")\n")
-        #     for node in nodes:
-        #         f.write("\t(node " + str(node) + str(" \"") + str(vals.get(node, default)) + "\")\n")
-        #     f.write(")\n") 
         f.write(")")
         f.close()
 
     def median_average(self, subset):
+        ''' Build the median vector of a subset *subset* of cells. *WARNING DEPRECATED*
+            Since deprecated, no more doc.
+        '''
         subset_dist = [np.mean([di.pos for di in c.D], axis = 0) - c.pos for c in subset if c.D != []]
         target_C = [c for c in subset if c.D != []]
         if subset_dist != []:
@@ -471,6 +211,9 @@ class lineageTree(object):
             return [0, 0, 0]
 
     def median_average_bw(self, subset):
+        ''' Build the median vector of a subset *subset* of cells. *WARNING DEPRECATED*
+            Since deprecated, no more doc.
+        '''
         subset_dist = [c.M.pos - c.pos for c in subset if c.M != self.R]
         target_C = [c for c in subset if c.D != []]
         if subset_dist != []:
@@ -479,7 +222,10 @@ class lineageTree(object):
         else:
             return [0, 0, 0]
 
-    def build_median_vector(self, C, dist_th, delta_t = 2):#temporal_space=lambda d, t, c: d+(t*c)):
+    def build_median_vector(self, C, dist_th, delta_t = 2):
+        ''' Computes the median vector for a cell *C*. *WARNING DEPRECATED*
+            Since deprecated, no more doc.
+        '''
         if not hasattr(self, 'spatial_edges'):
             self.compute_spatial_edges(dist_th)
         subset = [C]
@@ -502,6 +248,9 @@ class lineageTree(object):
         return self.median_average(subset)
 
     def build_vector_field(self, dist_th=50):
+        ''' Builds the median vectors of every nodes using the cells at a distance *dist_th*. *WARNING DEPRECATED*
+            Since deprecated, no more doc.
+        '''
         ruler = 0
         for C in self.nodes:
             if ruler != C.time:
@@ -510,13 +259,14 @@ class lineageTree(object):
             ruler = C.time
     
     def single_cell_propagation(self, params):
+        ''' Computes the incoming displacement vector of a cell. *WARNING DEPRECATED*
+            Since deprecated, no more doc.
+        '''
         C, t, nb_max, dist_max, to_check_self, R, pos, successor, predecessor = params
         idx3d = self.kdtrees[t]
         closest_cells = np.array(to_check_self)[list(idx3d.query(tuple(pos[C]), nb_max)[1])]
         max_value = np.min(np.where(np.array([_dist_v(pos[C], pos[ci]) for ci in closest_cells]+[dist_max+1])>dist_max))
         cells_to_keep = closest_cells[:max_value]
-        # med = median_average_bw(cells_to_keep, R, pos)
-        # print type (cells_to_keep)
         subset_dist = [np.mean([pos[cii] for cii in predecessor[ci]], axis=0) - pos[ci] for ci in cells_to_keep if not ci in R]
         if subset_dist != []:
             med_distance = spatial.distance.squareform(spatial.distance.pdist(subset_dist))
@@ -526,6 +276,19 @@ class lineageTree(object):
         return C, med
     
     def read_from_xml(self, file_format, tb, te, z_mult=1., mask = None):
+        ''' Reads a lineage tree from TGMM xml output.
+            Args:
+                file_format: string, path to the xmls location.
+                        it should be written as follow:
+                            path/to/xml/standard_name_t%06d.xml where (as an example)
+                            %06d means a series of 6 digits representing the time and
+                            if the time values is smaller that 6 digits, the missing
+                            digits are filed with 0s
+                tb: int, first time point to read
+                te: int, last time point to read
+                z_mult: float, aspect ratio
+                mask: SpatialImage, binary image that specify the region to read
+        '''
         self.time_nodes = {}
         self.time_edges = {}
         unique_id = 0
@@ -606,6 +369,10 @@ class lineageTree(object):
         self.max_id = unique_id - 1
 
     def read_from_mamut_xml(self, path):
+        ''' Read a lineage tree from a MaMuT xml.
+            Args:
+                path: string, path to the MaMut xml
+        '''
         tree = ET.parse(path)
         Model = tree.getroot()[0]
         FeatureDeclarations, AllSpots, AllTracks, FilteredTracks = list(Model)
@@ -650,7 +417,26 @@ class lineageTree(object):
         self.t_b = min(self.time_nodes.keys())
         self.t_e = max(self.time_nodes.keys())
     
-    def to_binary(self, fname, starting_points = None):    
+    def to_binary(self, fname, starting_points = None):
+        ''' Writes the lineage tree (a forest) as a binary structure
+            (assuming it is a binary tree, it would not work for *n*ary tree with 2 < *n*).
+            The binary file is composed of 3 sequences of numbers and
+            a header specifying the size of each of these sequences.
+            The first sequence, *number_sequence*, represents the lineage tree
+            as a DFT preporder transversal list. -1 signifying a leaf and -2 a branching
+            The second sequence, *time_sequence*, represent the starting time of each tree.
+            The third sequence, *pos_sequence*, reprensent the 3D coordinates of the objects.
+            The header specify the size of each of these sequences.
+            Each size is stored as a long long
+            The *number_sequence* is stored as a list of long long (0 -> 2^(8*8)-1)
+            The *time_sequence* is stored as a list of unsigned short (0 -> 2^(8*2)-1)
+            The *pos_sequence* is stored as a list of double
+            Args:
+                fname: string, name of the binary file
+                starting_points: [int, ], list of the roots to be written.
+                        If None, all roots are written
+                        Default: None
+        '''
         if starting_points is None:
             starting_points = [c for c in self.successor.iterkeys() if self.predecessor.get(c, []) == []]
         number_sequence = [-1]
@@ -691,6 +477,13 @@ class lineageTree(object):
 
 
     def read_from_binary(self, fname, reverse_time = False):
+        ''' Reads a binary lineageTree file name.
+            Format description:
+                see self.to_binary
+            Args:
+                fname: string, path to the binary file
+                reverse_time: bool, not used
+        '''
         q_size = struct.calcsize('q')
         H_size = struct.calcsize('H')
         d_size = struct.calcsize('d')
@@ -780,6 +573,12 @@ class lineageTree(object):
         self.max_id = max(self.nodes)
     
     def write_to_prune(self, file_format_input, file_format_output):
+        ''' Useless function that reads and rewrites a TGMM files from a TGMM intput
+            only keeping the objects in self.to_keep between time points 200 and 205 (mostly why this function is useless).
+            Args:
+                file_format_input: string, format of the input TGMM files
+                file_format_output: string, format of the output TGMM files
+        '''
         old_id_to_new = {}
         old_lin_to_new = {}
         lin_id = 0
@@ -798,23 +597,24 @@ class lineageTree(object):
                     if not self.to_keep.get(self.time_id[(t, cell_id)], False):
                         root.remove(it)
                     else:
-
-                        # if t == 201 and old_lin_to_new.get(old_lin_id, 0) == 0:#old_id_to_new.get((t-1, M_id), 0) == 12:
-                            # print 'YO'
-                            # break
-                        # break
                         if M_id != -1:
-                            it.set('parent', M_id)#str(old_id_to_new[(t-1, M_id)]))
-                        it.set('id', cell_id)#str(new_id))
+                            it.set('parent', M_id)
+                        it.set('id', cell_id)
                         old_id_to_new[(t, cell_id)] = new_id
                         new_id += 1
-                        # if not old_lin_to_new.has_key(old_lin_id):
-                        #     old_lin_to_new[old_lin_id] = lin_id
-                        #     lin_id += 1
-                        # it.set('lineage', str(old_lin_to_new[old_lin_id]))
             tree.write(file_format_output%t)
 
     def get_idx3d(self, t):
+        ''' Get a 3d kdtree for the dataset at time *t*
+            The  kdtree is stored in self.kdtrees[t]
+            Args:
+                t: int, time
+            Returns:
+                idx3d: kdtree, the built kdtree
+                to_check_self: the correspondancy list:
+                    If the query in the kdtree gives you the value i,
+                    then it corresponds to the id in the tree to_check_self[i] 
+        '''
         to_check_self = self.time_nodes[t]
         if not self.kdtrees.has_key(t):
             data_corres = {}
@@ -829,6 +629,12 @@ class lineageTree(object):
         return idx3d, to_check_self
 
     def get_gabriel_graph(self, t):
+        ''' Build the Gabriel graph of the given graph for time point *t*
+            The Garbiel graph is then stored in self.Gabriel_graph.
+            *WARNING: the graph is not recomputed if already computed. even if nodes were added*.
+            Args:
+                t: int, time
+        '''
         if not hasattr(self, 'Gabriel_graph'):
             self.Gabriel_graph = {}
 
@@ -851,25 +657,34 @@ class lineageTree(object):
 
             Gabriel_graph = {}
 
-            for e1, ni in delaunay_graph.iteritems():
-                ni = list(ni)
-                pos_e1 = data[e1]
-                distances = np.array([self._dist_v(pos_e1, data[e2]) for e2 in ni])
-                sorted_neighbs = list(np.array(ni)[np.argsort(distances)])
-                tmp_pt = sorted_neighbs.pop(0)
-                while not tmp_pt is None and len(idx3d.query_ball_point((data[tmp_pt] + pos_e1)/2., (self._dist_v(pos_e1, data[tmp_pt])/2)-10**-3))<=2:
-                    Gabriel_graph.setdefault(nodes[e1], set()).add(nodes[tmp_pt])
-                    Gabriel_graph.setdefault(nodes[tmp_pt], set()).add(nodes[e1])
-                    if sorted_neighbs != []:
-                        tmp_pt = sorted_neighbs.pop(0)
-                    else:
-                        tmp_pt = None
+            for e1, neighbs in delaunay_graph.iteritems():
+                for ni in neighbs:
+                    if not any([np.linalg.norm((data[ni] + data[e1])/2 - data[i])<np.linalg.norm(data[ni] - data[e1])/2
+                            for i in delaunay_graph[e1].intersection(delaunay_graph[ni])]):
+                        Gabriel_graph.setdefault(data_corres[e1], set()).add(data_corres[ni])
+                        Gabriel_graph.setdefault(data_corres[ni], set()).add(data_corres[e1])
+            # for e1, ni in delaunay_graph.iteritems():
+            #     ni = list(ni)
+            #     pos_e1 = data[e1]
+            #     distances = np.array([self._dist_v(pos_e1, data[e2]) for e2 in ni])
+            #     sorted_neighbs = list(np.array(ni)[np.argsort(distances)])
+            #     tmp_pt = sorted_neighbs.pop(0)
+            #     while not tmp_pt is None and len(idx3d.query_ball_point((data[tmp_pt] + pos_e1)/2., (self._dist_v(pos_e1, data[tmp_pt])/2)-10**-3))<=2:
+            #         Gabriel_graph.setdefault(nodes[e1], set()).add(nodes[tmp_pt])
+            #         Gabriel_graph.setdefault(nodes[tmp_pt], set()).add(nodes[e1])
+            #         if sorted_neighbs != []:
+            #             tmp_pt = sorted_neighbs.pop(0)
+            #         else:
+            #             tmp_pt = None
 
             self.Gabriel_graph[t] = Gabriel_graph
 
         return self.Gabriel_graph[t]
 
     def parallel_gabriel_graph_preprocess(self, nb_proc = 20):
+        ''' Build the gabriel graphs for each time point. *WARNING DEPRECATED*
+            Since deprecated, no more doc.
+        ''' 
         mapping = []
         if not hasattr(self, 'Gabriel_graph'):
             self.Gabriel_graph = {}
@@ -890,6 +705,9 @@ class lineageTree(object):
 
 
     def build_VF_propagation_backward(self, t_b=0, t_e=200, nb_max=20, dist_max=200, nb_proc = 8):
+        ''' Build the backward propagation from TGMM data. *WARNING DEPRECATED*
+            Since deprecated, no more doc.
+        '''
         self.VF = lineageTree(None, None, None)
         from time import time
 
@@ -902,7 +720,6 @@ class lineageTree(object):
         unique_id = 0
         self.VF.time_nodes = {t_b: []}
         for C in starting_cells:
-            # C_tmp = CellSS(unique_id=unique_id, id=unique_id, M=self.VF.R, time = t_b, pos = C.pos)
             i = self.VF.get_next_id()
             self.VF.nodes.append(i)
             self.VF.time_nodes[t_b].append(i)
@@ -910,10 +727,6 @@ class lineageTree(object):
             self.VF.pos[i]=self.pos[C]
 
         for t in range(t_b, t_e, -1):
-            # if t!=t_b and t%10 == 0:
-            #     print t
-            # else:
-            #     print t,
             tic = time()
             print t, ': ',
             to_check_VF = self.VF.time_nodes[t]
@@ -922,7 +735,6 @@ class lineageTree(object):
 
             self.VF.time_nodes[t-1] = []
             mapping = []
-            # tmp = np.array(to_check_self)
 
             Gabriel_graph = self.get_gabriel_graph(t)
 
@@ -932,7 +744,6 @@ class lineageTree(object):
             for C in to_check_VF:
                 C_self = to_check_self[idx3d.query(self.VF.pos[C])[1]]
                 cell_mapping_LT_VF[C_self] = C
-                # mapping += [(C, idx3d, nb_max, dist_max, tmp, self.roots, self.pos, self.VF.pos, self.successor, self.predecessor)]
                 mapping += [(C_self, Gabriel_graph, dist_max, self.roots, self.pos, self.predecessor)]
 
             out = []
@@ -945,17 +756,9 @@ class lineageTree(object):
                 out = pool.map(single_cell_propagation, mapping)
                 pool.terminate()
                 pool.close()
-                # out= out.get()
             for C, med in out:
                 C_VF = cell_mapping_LT_VF[C]
                 self.VF.add_node(t-1, C_VF, self.VF.pos[C_VF] + med)
-                # C_next = self.VF.get_next_id()
-                # # C_next = CellSS(unique_id, unique_id, M=C, time = t-1, pos= C.pos + med)
-                # self.VF.time_nodes[t-1].append(C_next)
-                # self.VF.successor.setdefauself(C, []).append(C_next)
-                # self.VF.edges.append((C, C_next))
-                # self.VF.nodes.append(C_next)
-                # self.VF.pos[C_next] = self.VF.pos[C] + med
 
             idx3d, to_check_self = self.get_idx3d(t-1)
             to_check_VF = self.VF.time_nodes[t-1]
@@ -968,7 +771,6 @@ class lineageTree(object):
             print 'Spatial density done (%f s); '%(time() - tic),
 
             dist_to_VF, equivalence = idx3d.query([self.VF.pos[c] for c in to_check_VF], 1)
-            # equivalence = equivalence[:,1]
 
             count = np.bincount(equivalence)
             self_too_close, = np.where(count > 1)
@@ -985,7 +787,6 @@ class lineageTree(object):
                     TMP.append([to_check_VF[c1], to_check_VF[c2]])
 
             for c1, c2 in TMP:
-                # new_pos = np.mean([self.VF.pos[c1], self.VF.pos[c2]], axis = 0)
                 if c1 != c2:
                     self.VF.fuse_nodes(c1, c2)
 
@@ -1007,6 +808,13 @@ class lineageTree(object):
         return self.VF
 
     def compute_spatial_density(self, t_b=0, t_e=200, n_size=10):
+        ''' Computes the average distance between the *n_size* closest object for a set of time points
+            The results is stored in self.spatial_density
+            Args:
+                t_b: int, starting time to look at
+                t_e: int, ending time to look at
+                n_size: int, number of neighbors to look at
+        '''
         time_range = [t for t in self.time_nodes.keys() if t_b <= t <= t_e]
         for t in time_range:
             Cs = self.time_nodes[t]
@@ -1017,13 +825,17 @@ class lineageTree(object):
                 data_corres[i] = C
             if not self.kdtrees.has_key(t):
                 idx3d = kdtree.KDTree(data)
-                # self.kdtrees[t] = idx3d
             else:
                 idx3d = self.kdtrees[t]
             distances, indices = idx3d.query(data, n_size)
             self.spatial_density.update(dict(zip(Cs, np.mean(distances[:, 1:], axis=1))))
 
     def compute_spatial_edges(self, th=50):
+        ''' Innefitiently computes the connection between cells at a given distance
+            Writes the output in self.spatial_edges
+            Args:
+                th: float, distance to consider neighbors
+        '''
         self.spatial_edges=[]
         for t, Cs in self.time_nodes.iteritems():
             nodes_tmp, pos_tmp = zip(*[(C, C.pos) for C in Cs])
@@ -1036,6 +848,18 @@ class lineageTree(object):
                 C1.N.append(C2)
 
     def __init__(self, file_format, tb = None, te = None, z_mult = 1., mask = None, MaMuT = False):
+        ''' Main library to build tree graph representation of TGMM and SVF data
+            It can read TGMM xml outputs, MaMuT files and binary files (see to_binary and read_from_binary)
+            Args:
+                file_format: string, either: - path format to the TGMM xml 
+                                             - path to the MaMuT file
+                                             - path to the binary file
+                tb: int, first time point (necessary for TGMM xmls only)
+                te: int, last time point (necessary for TGMM xmls only)
+                z_mult: float, z aspect ratio if necessary (usually only for TGMM xmls)
+                mask: SpatialImage, binary image that specify the region to read (for TGMM xmls only)
+                MaMuT: boolean, to specify that a MaMuT file is read
+        '''
         super(lineageTree, self).__init__()
         self.time_nodes = {}
         self.time_edges = {}
