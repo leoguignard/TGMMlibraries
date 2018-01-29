@@ -6,6 +6,7 @@ This libraries allows to read and wor with lineage trees produced by TGMM tracki
   - TGMMlibraries: folder containing the package
   - setup.py: Installation script
   - README.md: This file
+  - LICENCE: The licence describing file
 
 ## Basic usage
 Once installed the library can be called the following way (as an example):
