@@ -1,4 +1,13 @@
+<<<<<<< HEAD
 from scipy.spatial import cKDTree as KDTree
+=======
+#!python
+# This file is subject to the terms and conditions defined in
+# file 'LICENCE', which is part of this source code package.
+# Author: Leo Guignard (guignardl...@AT@...janelia.hhmi.org)
+
+from scipy.spatial import kdtree
+>>>>>>> 2eefa7f0711cf4e83c8ab150bcb8732fa65371a7
 import os
 import xml.etree.ElementTree as ET
 from copy import copy
