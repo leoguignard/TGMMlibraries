@@ -1,4 +1,4 @@
-from scipy.spatial import kdtree
+from scipy.spatial import cKDTree as KDTree
 import os
 import xml.etree.ElementTree as ET
 from copy import copy
@@ -8,6 +8,7 @@ from multiprocessing import Pool
 from scipy.spatial import Delaunay
 from itertools import combinations
 import struct
+import sys
 
 class lineageTree(object):
     ''' lineageTree is a class container for lineage tree structures
@@ -508,7 +509,28 @@ class lineageTree(object):
         edges = []
         waiting_list = []
         print number_sequence[0]
-        for i, c in enumerate(number_sequence[:-1]):
+        i = 0
+        done = False
+        if max(number_sequence[::2]) == -1:
+            # number_sequence = number_sequence[1::2]
+            tmp = number_sequence[1::2]
+            if len(tmp)*3 == len(pos_sequence) == len(time_sequence)*3:
+                time = dict(zip(tmp, time_sequence))
+                for c, t in time.iteritems():
+                    time_nodes.setdefault(t, []).append(c)
+                pos = dict(zip(tmp, np.reshape(pos_sequence, (len_time, 3))))
+                is_root = {c:True for c in tmp}
+                nodes = tmp
+                done = True
+        shown = set()
+        while i < len(number_sequence) and not done:#, c in enumerate(number_sequence[:-1]):
+            c = number_sequence[i]
+            # if (1000.*i)//len(number_sequence)%10==0 and not (1000.*i)//len(number_sequence) in shown:
+            #     shown.add((1000.*i)//len(number_sequence))
+            #     sys.stdout.write('\b'*(4))
+            #     sys.stdout.flush()
+            #     sys.stdout.write("%03d"%((100*i)//len(number_sequence))+"%")#(100*i)//len(number_sequence)
+            #     sys.stdout.flush()
             if c == -1:
                 if waiting_list != []:
                     prev_mother = waiting_list.pop()
@@ -555,8 +577,24 @@ class lineageTree(object):
                 time[c] = t
                 time_nodes.setdefault(t, []).append(c)
                 t += 1
+                i += 1
+                if waiting_list != []:
+                    prev_mother = waiting_list.pop()
+                    successor[prev_mother].insert(0, number_sequence[i+1])
+                    edges.append((prev_mother, number_sequence[i+1]))
+                    time_edges.setdefault(t, []).append((prev_mother, number_sequence[i+1]))
+                    if i+1<len(number_sequence):
+                        is_root[number_sequence[i+1]] = False
+                    t = time[prev_mother] + 1
+                else:
+                    if 0 < len(time_sequence):
+                        t = time_sequence.pop(0)
+                    if i+1<len(number_sequence):
+                        is_root[number_sequence[i+1]] = True
+            i += 1
 
         predecessor = {vi: [k] for k, v in successor.iteritems() for vi in v}
+        print '100%'
 
         self.successor = successor
         self.predecessor = predecessor
@@ -621,7 +659,7 @@ class lineageTree(object):
             for i, C in enumerate(to_check_self):
                 data.append(tuple(self.pos[C]))
                 data_corres[i] = C
-            idx3d = kdtree.KDTree(data)
+            idx3d = KDTree(data)
             self.kdtrees[t] = idx3d
         else:
             idx3d = self.kdtrees[t]
@@ -711,9 +749,9 @@ class lineageTree(object):
         from time import time
 
         # Hack to allow pickling of kdtrees for multiprocessing
-        kdtree.node = kdtree.KDTree.node
-        kdtree.leafnode = kdtree.KDTree.leafnode
-        kdtree.innernode = kdtree.KDTree.innernode
+        # kdtree.node = kdtree.KDTree.node
+        # kdtree.leafnode = kdtree.KDTree.leafnode
+        # kdtree.innernode = kdtree.KDTree.innernode
 
         starting_cells = self.time_nodes[t_b]
         unique_id = 0
@@ -823,7 +861,7 @@ class lineageTree(object):
                 data.append(tuple(self.pos[C]))
                 data_corres[i] = C
             if not self.kdtrees.has_key(t):
-                idx3d = kdtree.KDTree(data)
+                idx3d = KDTree(data)
             else:
                 idx3d = self.kdtrees[t]
             distances, indices = idx3d.query(data, n_size)
