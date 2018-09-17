@@ -1,6 +1,6 @@
 # TGMMlibraries
 
-This libraries allows to read and wor with lineage trees produced by TGMM tracking algorithm described in [Fernando et al. 2014](https://www.nature.com/articles/nmeth.3036).
+This libraries allows to read and work with lineage trees produced by TGMM tracking algorithm described in [Fernando et al. 2014](https://www.nature.com/articles/nmeth.3036).
 
 ## Description of the repository
   - TGMMlibraries: folder containing the package
