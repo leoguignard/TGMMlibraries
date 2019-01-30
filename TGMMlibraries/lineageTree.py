@@ -325,9 +325,9 @@ class lineageTree(object):
                     elif self.name[c][:-1] in name_to_id:
                         p = name_to_id[self.name[c][:-1]]
                     elif implicit_l_t.get(self.name[c]) in name_to_id:
-                        p = implicit_l_t.get(self.name[c])
+                        p = name_to_id[implicit_l_t.get(self.name[c])]
                     else:
-                        print 'error, cell %s has no predecessors'%name[c]
+                        print 'error, cell %s has no predecessors'%self.name[c]
                         p = None
                     self.predecessor.setdefault(c, []).append(p)
                     self.successor.setdefault(p, []).append(c)
