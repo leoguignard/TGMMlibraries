@@ -280,6 +280,63 @@ class lineageTree(object):
             med = [0, 0, 0]
         return C, med
     
+    def read_from_txt_for_celegans(self, file):
+        implicit_l_t = {
+            'AB': 'P0',
+            'P1': 'P0',
+            'EMS': 'P1',
+            'P2': 'P1',
+            'MS': 'EMS',
+            'E': 'EMS',
+            'C': 'P2',
+            'P3': 'P2',
+            'D': 'P3',
+            'P4': 'P3',
+            'Z2': 'P4',
+            'Z3': 'P4'
+        }        
+
+        f = open(file)
+        raw = f.readlines()[1:]
+        f.close()
+        self.name = {}
+
+        unique_id = 0
+        for l in raw:
+            t = int(l.split('\t')[0])
+            self.name[unique_id] = l.split('\t')[1]
+            position = np.array(l.split('\t')[2:5], dtype = np.float)
+            self.time_nodes.setdefault(t, []).append(unique_id)
+            self.nodes += [unique_id]
+            self.pos[unique_id] = position
+            self.time[unique_id] = t
+            unique_id += 1
+
+        self.t_b = min(self.time_nodes)
+        self.t_e = max(self.time_nodes)
+            
+        for t, cells in self.time_nodes.iteritems():
+            if t != self.t_b:
+                prev_cells = self.time_nodes[t-1]
+                name_to_id = {self.name[c]: c for c in prev_cells}
+                for c in cells:
+                    if self.name[c] in name_to_id:
+                        p = name_to_id[self.name[c]]
+                    elif self.name[c][:-1] in name_to_id:
+                        p = name_to_id[self.name[c][:-1]]
+                    elif implicit_l_t.get(self.name[c]) in name_to_id:
+                        p = implicit_l_t.get(self.name[c])
+                    else:
+                        print 'error, cell %s has no predecessors'%name[c]
+                        p = None
+                    self.predecessor.setdefault(c, []).append(p)
+                    self.successor.setdefault(p, []).append(c)
+                    self.edges += [(p, c)]
+                    self.time_edges.setdefault(t-1, []).append((p, c))
+            self.max_id = unique_id
+
+
+
     def read_from_xml(self, file_format, tb, te, z_mult=1., mask = None):
         ''' Reads a lineage tree from TGMM xml output.
             Args:
@@ -889,7 +946,7 @@ class lineageTree(object):
             for C1, C2 in to_link:
                 C1.N.append(C2)
 
-    def __init__(self, file_format, tb = None, te = None, z_mult = 1., mask = None, MaMuT = False):
+    def __init__(self, file_format, tb = None, te = None, z_mult = 1., mask = None, MaMuT = False, celegans = False):
         ''' Main library to build tree graph representation of TGMM and SVF data
             It can read TGMM xml outputs, MaMuT files and binary files (see to_binary and read_from_binary)
             Args:
@@ -918,11 +975,13 @@ class lineageTree(object):
         self.kdtrees = {}
         self.spatial_density = {}
         self.progeny = {}
-        if not (file_format is None or tb is None or te is None) and not MaMuT:
+        if not (file_format is None or tb is None or te is None or MaMuT):
             self.read_from_xml(file_format, tb, te, z_mult=z_mult, mask = mask)
             self.t_b = tb
             self.t_e = te
         elif not (file_format is None) and MaMuT:
             self.read_from_mamut_xml(file_format)
+        elif not (file_format is None) and celegans:
+            self.read_from_txt_for_celegans(file_format)
         elif not (file_format is None):
             self.read_from_binary(file_format)
