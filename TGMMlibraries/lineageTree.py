@@ -280,6 +280,47 @@ class lineageTree(object):
             med = [0, 0, 0]
         return C, med
     
+    def read_from_pkl_ASTEC(self, file):
+        import cPickle as pkl
+        f = open(file)
+        tmp_data = pkl.load(f)
+        f.close()
+        self.name = {}
+        lt = tmp_data['Lineage tree']
+        names = tmp_data['Names']
+        pos = tmp_data['Barycenters']
+        inv = {vi: [c] for c, v in lt.iteritems() for vi in v}
+        nodes = set(lt).union(inv)
+
+        unique_id = 0
+        id_corres = {}
+        for n in nodes:
+            if n in pos and n in names:
+                t = n // 10**4
+                self.name[unique_id] = names[n]
+                position = np.array(pos[n], dtype = np.float)
+                self.time_nodes.setdefault(t, []).append(unique_id)
+                self.nodes += [unique_id]
+                self.pos[unique_id] = position
+                self.time[unique_id] = t
+                id_corres[n] = unique_id
+                unique_id += 1
+
+        for n, new_id in id_corres.iteritems():
+            # new_id = id_corres[n]
+            if n in inv:
+                self.predecessor[new_id] = [id_corres[ni] for ni in inv[n]]
+            if n in lt:
+                self.successor[new_id] = [id_corres[ni] for ni in lt[n] if ni in id_corres]
+                self.edges += [(new_id, ni) for ni in self.successor[new_id]]
+                for ni in self.successor[new_id]:
+                    self.edges += [(new_id, ni)]
+                    self.time_edges.setdefault(t-1, []).append((new_id, ni))
+
+        self.t_b = min(self.time_nodes)
+        self.t_e = max(self.time_nodes)
+        self.max_id = unique_id
+
     def read_from_txt_for_celegans(self, file):
         implicit_l_t = {
             'AB': 'P0',
@@ -946,7 +987,8 @@ class lineageTree(object):
             for C1, C2 in to_link:
                 C1.N.append(C2)
 
-    def __init__(self, file_format, tb = None, te = None, z_mult = 1., mask = None, MaMuT = False, celegans = False):
+    def __init__(self, file_format, tb = None, te = None, z_mult = 1., mask = None,
+                 MaMuT = False, celegans = False, ASTEC = False):
         ''' Main library to build tree graph representation of TGMM and SVF data
             It can read TGMM xml outputs, MaMuT files and binary files (see to_binary and read_from_binary)
             Args:
@@ -983,5 +1025,7 @@ class lineageTree(object):
             self.read_from_mamut_xml(file_format)
         elif not (file_format is None) and celegans:
             self.read_from_txt_for_celegans(file_format)
+        elif not (file_format is None) and ASTEC:
+            self.read_from_pkl_ASTEC(file_format)
         elif not (file_format is None):
             self.read_from_binary(file_format)
