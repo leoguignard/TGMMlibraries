@@ -160,12 +160,12 @@ class lineageTree(object):
         f.write("(tlp \"2.0\"\n")
         f.write("(nodes ")
         if t_max!=np.inf or t_min>-1:
-            nodes_to_use = [n for n in self.nodes if t_min<n.time<=t_max]
+            nodes_to_use = [n for n in self.nodes if t_min<self.time[n]<=t_max]
             edges_to_use = []
             if temporal:
-                edges_to_use += [e for e in self.edges if t_min<e[0].time<t_max]
+                edges_to_use += [e for e in self.edges if t_min<self.time[e[0]]<t_max]
             if spatial:
-                edges_to_use += [e for e in self.spatial_edges if t_min<e[0].time<t_max]
+                edges_to_use += [e for e in self.spatial_edges if t_min<self.time[e[0]]<t_max]
         else:
             nodes_to_use = self.nodes
             edges_to_use = []
@@ -286,25 +286,37 @@ class lineageTree(object):
         tmp_data = pkl.load(f)
         f.close()
         self.name = {}
-        lt = tmp_data['Lineage tree']
-        names = tmp_data['Names']
-        pos = tmp_data['Barycenters']
+        if 'cell_lineage' in tmp_data:
+            lt = tmp_data['cell_lineage']
+        else:
+            lt = tmp_data['Lineage tree']
+        if 'cell_name' in tmp_data:
+            names = tmp_data['cell_name']
+        else:
+            names = tmp_data['Names']
+            
         inv = {vi: [c] for c, v in lt.iteritems() for vi in v}
         nodes = set(lt).union(inv)
+        if 'cell_barycenter' in tmp_data:
+            pos = tmp_data['cell_barycenter']
+        elif 'Barycenters' in tmp_data:
+            pos = tmp_data['Barycenters']
+        else:
+            pos = dict(zip(nodes, [[0., 0., 0.], ]*len(nodes)))
 
         unique_id = 0
         id_corres = {}
         for n in nodes:
-            if n in pos and n in names:
-                t = n // 10**4
-                self.name[unique_id] = names[n]
-                position = np.array(pos[n], dtype = np.float)
-                self.time_nodes.setdefault(t, []).append(unique_id)
-                self.nodes += [unique_id]
-                self.pos[unique_id] = position
-                self.time[unique_id] = t
-                id_corres[n] = unique_id
-                unique_id += 1
+            # if n in pos and n in names:
+            t = n // 10**4
+            self.name[unique_id] = names.get(n, '')
+            position = np.array(pos.get(n, [0, 0, 0]), dtype = np.float)
+            self.time_nodes.setdefault(t, []).append(unique_id)
+            self.nodes += [unique_id]
+            self.pos[unique_id] = position
+            self.time[unique_id] = t
+            id_corres[n] = unique_id
+            unique_id += 1
 
         for n, new_id in id_corres.iteritems():
             # new_id = id_corres[n]
