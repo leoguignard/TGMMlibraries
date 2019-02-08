@@ -12,6 +12,7 @@ import numpy as np
 from multiprocessing import Pool
 from scipy.spatial import Delaunay
 from itertools import combinations
+from numbers import Number
 import struct
 import sys
 
@@ -144,35 +145,54 @@ class lineageTree(object):
         self.pos[c1] = np.mean([self.pos[c1], c2_pos], axis = 0)
         self.progeny[c1] += 1
 
-    def to_tlp(self, fname, t_min=-1, t_max=np.inf, temporal=True, spatial=False, VF=False):
+    def to_tlp(self, fname, t_min=-1, t_max=np.inf, nodes_to_use=None, temporal=True, spatial=False,
+               VF=False, write_layout=True, node_properties = None):
         '''
         Write a lineage tree into an understable tulip file
         Args:
             fname: string, path to the tulip file to create
             t_min: int, minimum time to consider, default -1
             t_max: int, maximum time to consider, default np.inf
+            nodes_to_use: [int, ], list of nodes to show in the graph, 
+                          default *None*, then self.nodes is used 
+                          (taking into account *t_min* and *t_max*)
             temporal: boolean, True if the temporal links should be printed, default True
             spatial: boolean, True if the special links should be printed, default True
             VF: boolean, useless
+            write_layout: boolean, True, write the spatial position as layout, 
+                                   False, do not write spatial positionm
+                                   default True
+            node_properties = {'p_name':[{id:p_value, }, default]}, a dictionary of properties to write
+                                                To a key representing the name of the property is
+                                                paired a dictionary that maps a cell id to a property
+                                                and a default value for this property
         '''
         f=open(fname, "w")
 
         f.write("(tlp \"2.0\"\n")
         f.write("(nodes ")
-        if t_max!=np.inf or t_min>-1:
-            nodes_to_use = [n for n in self.nodes if t_min<self.time[n]<=t_max]
-            edges_to_use = []
-            if temporal:
-                edges_to_use += [e for e in self.edges if t_min<self.time[e[0]]<t_max]
-            if spatial:
-                edges_to_use += [e for e in self.spatial_edges if t_min<self.time[e[0]]<t_max]
+        if not nodes_to_use:
+            if t_max!=np.inf or -1<t_min:
+                nodes_to_use = [n for n in self.nodes if t_min<n.time<=t_max]
+                edges_to_use = []
+                if temporal:
+                    edges_to_use += [e for e in self.edges if t_min<e[0].time<t_max]
+                if spatial:
+                    edges_to_use += [e for e in self.spatial_edges if t_min<e[0].time<t_max]
+            else:
+                nodes_to_use = self.nodes
+                edges_to_use = []
+                if temporal:
+                    edges_to_use += self.edges
+                if spatial:
+                    edges_to_use += self.spatial_edges
         else:
-            nodes_to_use = self.nodes
             edges_to_use = []
             if temporal:
-                edges_to_use += self.edges
+                edges_to_use += [e for e in self.edges if e[0] in nodes_to_use and e[1] in nodes_to_use]
             if spatial:
-                edges_to_use += self.spatial_edges
+                edges_to_use += [e for e in self.spatial_edges if t_min<e[0].time<t_max]
+
 
         for n in nodes_to_use:
             f.write(str(n)+ " ")
@@ -187,19 +207,32 @@ class lineageTree(object):
             f.write("\t(node " + str(n) + str(" \"") + str(self.time[n]) + "\")\n")
         f.write(")\n")
 
-        f.write("(property 0 layout \"viewLayout\"\n")
-        f.write("\t(default \"(0, 0, 0)\" \"()\")\n")
-        for n in nodes_to_use:
-            f.write("\t(node " + str(n) + str(" \"") + str(tuple(self.pos[n])) + "\")\n")
-        f.write(")\n")
+        if write_layout:
+            f.write("(property 0 layout \"viewLayout\"\n")
+            f.write("\t(default \"(0, 0, 0)\" \"()\")\n")
+            for n in nodes_to_use:
+                f.write("\t(node " + str(n) + str(" \"") + str(tuple(self.pos[n])) + "\")\n")
+            f.write(")\n")
+            f.write("(property 0 double \"distance\"\n")
+            f.write("\t(default \"0\" \"0\")\n")
+            for i, e in enumerate(edges_to_use):
+                d_tmp = self._dist_v(self.pos[e[0]], self.pos[e[1]])
+                f.write("\t(edge " + str(i) + str(" \"") + str(d_tmp) + "\")\n")
+                f.write("\t(node " + str(e[0]) + str(" \"") + str(d_tmp) + "\")\n")
+            f.write(")\n")
 
-        f.write("(property 0 double \"distance\"\n")
-        f.write("\t(default \"0\" \"0\")\n")
-        for i, e in enumerate(edges_to_use):
-            d_tmp = self._dist_v(self.pos[e[0]], self.pos[e[1]])
-            f.write("\t(edge " + str(i) + str(" \"") + str(d_tmp) + "\")\n")
-            f.write("\t(node " + str(e[0]) + str(" \"") + str(d_tmp) + "\")\n")
-        f.write(")\n")
+        if node_properties:
+            for p_name, (p_dict, default) in node_properties.iteritems():
+                if type(p_dict.values()[0]) == str:
+                    f.write("(property 0 string \"%s\"\n"%p_name)
+                    f.write("\t(default %s %s)\n"%(default, default))
+                elif isinstance(p_dict.values()[0], number):
+                	f.write("(property 0 double \"%s\"\n"%p_name)
+                	f.write("\t(default 0 0)\n")
+                for n in nodes_to_use:
+                    f.write("\t(node " + str(n) + str(" \"") + str(p_dict.get(n, default)) + "\")\n")
+                f.write(")\n")
+
         f.write(")")
         f.close()
 
