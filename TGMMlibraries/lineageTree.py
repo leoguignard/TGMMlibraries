@@ -806,6 +806,8 @@ class lineageTree(object):
             for N in tmp.simplices:
                 for e1, e2 in combinations(np.sort(N), 2):
                     delaunay_graph.setdefault(e1, set([])).add(e2)
+                    delaunay_graph.setdefault(e2, set([])).add(e1)
+
 
             Gabriel_graph = {}
 
@@ -958,6 +960,58 @@ class lineageTree(object):
         self.VF.t_e = t_e
 
         return self.VF
+
+    def get_predecessors(self, x, depth = None):
+        ''' Computes the predecessors of the node *x* up to
+            *depth* predecessors. The ordered list of ids is returned
+            Args:
+                x: int, id of the node to compute
+                depth: int, maximum number of predecessors to return
+            Returns:
+                cycle: [int, ], list of ids, the last id is *x*
+        '''
+        cycle = [x]
+        acc = 0
+        while (len(self.successor.get(self.predecessor.get(cycle[0], [-1])[0], [])) == 1
+                    and acc != depth):
+            cycle.insert(0, self.predecessor[cycle[0]][0])
+            acc += 1
+        return cycle
+
+    def get_successors(self, x, depth = None):
+        ''' Computes the successors of the node *x* up to
+            *depth* successors. The ordered list of ids is returned
+            Args:
+                x: int, id of the node to compute
+                depth: int, maximum number of predecessors to return
+            Returns:
+                cycle: [int, ], list of ids, the first id is *x*
+        '''
+        cycle = [x]
+        acc = 0
+        while (len(self.successor.get(cycle[-1], [])) == 1
+                    and acc != depth):
+            cycle += self.successor[cycle[-1]]
+            acc += 1
+        return cycle
+
+    def get_cycle(self, x, depth = None, depth_pred = None, depth_succ = None):
+        ''' Computes the predecessors and successors of the node *x* up to
+            *depth_pred* predecessors plus *depth_succ* successors.
+            If the value *depth* is provided and not None,
+            *depth_pred* and *depth_succ* are overwrited by *depth*.
+            The ordered list of ids is returned
+            Args:
+                x: int, id of the node to compute
+                depth: int, maximum number of predecessors and successor to return
+                depth_pred: int, maximum number of predecessors to return
+                depth_succ: int, maximum number of successors to return
+            Returns:
+                cycle: [int, ], list of ids
+        '''
+        if depth is not None:
+            depth_pred = depth_succ = depth
+        return (self.get_predecessors(x, depth_pred)[:-1] + self.get_successors(x, depth_succ))
 
     def compute_spatial_density(self, t_b=0, t_e=200, n_size=10):
         ''' Computes the average distance between the *n_size* closest object for a set of time points
