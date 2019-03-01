@@ -319,6 +319,9 @@ class lineageTree(object):
         tmp_data = pkl.load(f)
         f.close()
         self.name = {}
+        self.volume = {}
+        self.lT2pkl = {}
+        self.pkl2lT = {}
         if 'cell_lineage' in tmp_data:
             lt = tmp_data['cell_lineage']
         else:
@@ -327,6 +330,14 @@ class lineageTree(object):
             names = tmp_data['cell_name']
         else:
             names = tmp_data['Names']
+        if 'cell_volume' in tmp_data:
+            do_volumes = True
+            volumes = tmp_data['cell_volume']
+        elif 'volume_information' in tmp_data:
+            do_volumes = True
+            volumes = tmp_data['volume_information']
+        else:
+            do_volumes = False
             
         inv = {vi: [c] for c, v in lt.iteritems() for vi in v}
         nodes = set(lt).union(inv)
@@ -342,7 +353,11 @@ class lineageTree(object):
         for n in nodes:
             # if n in pos and n in names:
             t = n // 10**4
+            self.lT2pkl[unique_id] = n
+            self.pkl2lT[n] = unique_id
             self.name[unique_id] = names.get(n, '')
+            if do_volumes:
+                self.volume[unique_id] = volumes.get(n, 0.)
             position = np.array(pos.get(n, [0, 0, 0]), dtype = np.float)
             self.time_nodes.setdefault(t, []).append(unique_id)
             self.nodes += [unique_id]
@@ -550,8 +565,10 @@ class lineageTree(object):
         tracks = {}
         self.successor = {}
         self.predecessor = {}
+        self.track_name = {}
         for track in AllTracks:
             t_id, l = int(track.attrib['TRACK_ID']), float(track.attrib['TRACK_DURATION'])
+            t_name = track.attrib['name']
             tracks[t_id] = []
             for edge in track:
                 s, t = int(edge.attrib['SPOT_SOURCE_ID']), int(edge.attrib['SPOT_TARGET_ID'])
@@ -560,6 +577,8 @@ class lineageTree(object):
                         s, t = t, s
                     self.successor.setdefault(s, []).append(t)
                     self.predecessor.setdefault(t, []).append(s)
+                    self.track_name[s] = t_name
+                    self.track_name[t] = t_name
                     tracks[t_id].append((s, t))
                     self.edges.append((s, t))
         self.t_b = min(self.time_nodes.keys())
