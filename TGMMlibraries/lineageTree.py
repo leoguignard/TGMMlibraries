@@ -322,6 +322,8 @@ class lineageTree(object):
         self.volume = {}
         self.lT2pkl = {}
         self.pkl2lT = {}
+        self.contact = {}
+        self.prob_cells = set()
         if 'cell_lineage' in tmp_data:
             lt = tmp_data['cell_lineage']
         else:
@@ -338,6 +340,15 @@ class lineageTree(object):
             volumes = tmp_data['volume_information']
         else:
             do_volumes = False
+        if 'cell_contact_surface' in tmp_data:
+            do_surf = True
+            surfaces = tmp_data['cell_contact_surface']
+        else:
+            do_surf = False
+        if 'problematic_cells' in tmp_data:
+            prob_cells = set(tmp_data['problematic_cells'])
+        else:
+            prob_cells = set()
             
         inv = {vi: [c] for c, v in lt.iteritems() for vi in v}
         nodes = set(lt).union(inv)
@@ -351,6 +362,8 @@ class lineageTree(object):
         unique_id = 0
         id_corres = {}
         for n in nodes:
+            if n in prob_cells:
+                self.prob_cells.add(unique_id)
             # if n in pos and n in names:
             t = n // 10**4
             self.lT2pkl[unique_id] = n
@@ -365,6 +378,11 @@ class lineageTree(object):
             self.time[unique_id] = t
             id_corres[n] = unique_id
             unique_id += 1
+        # self.contact = {self.pkl2lT[c]: v for c, v in surfaces.iteritems() if c in self.pkl2lT}
+        for c in nodes:
+            if c in surfaces and c in self.pkl2lT:
+                self.contact[self.pkl2lT[c]] = {self.pkl2lT.get(n, -1): s for n, s in surfaces[c].iteritems()
+                                                                if n%10**4==1 or n in self.pkl2lT}
 
         for n, new_id in id_corres.iteritems():
             # new_id = id_corres[n]
