@@ -145,6 +145,106 @@ class lineageTree(object):
         self.pos[c1] = np.mean([self.pos[c1], c2_pos], axis = 0)
         self.progeny[c1] += 1
 
+
+    def _write_header_am(self, f, nb_points, length):
+        ''' Header for Amira .am files
+        '''
+        f.write('# AmiraMesh 3D ASCII 2.0\n')
+        f.write('define VERTEX %d\n'%(nb_points*2))
+        f.write('define EDGE %d\n'%nb_points)
+        f.write('define POINT %d\n'%((length)*nb_points))
+        f.write('Parameters {\n')
+        f.write('\tContentType "HxSpatialGraph"\n')
+        f.write('}\n')
+
+        f.write('VERTEX { float[3] VertexCoordinates } @1\n')
+        f.write('EDGE { int[2] EdgeConnectivity } @2\n')
+        f.write('EDGE { int NumEdgePoints } @3\n')
+        f.write('POINT { float[3] EdgePointCoordinates } @4\n')
+        f.write('VERTEX { float Vcolor } @5\n')
+        f.write('VERTEX { int Vbool } @6\n')
+        f.write('EDGE { float Ecolor } @7\n')
+        f.write('VERTEX { int Vbool2 } @8\n')
+
+    def write_to_am(self, path_format, t_b = None, t_e = None, length = 5, manual_labels = None, 
+                      default_label = 5, new_pos = None):
+        ''' Writes a lineageTree into an Amira readable data (.am format).
+            Args:
+                path_format: string, path to the output. It should contain 1 %03d where the time step will be entered
+                t_b: int, first time point to write (if None, min(LT.to_take_time) is taken)
+                t_e: int, last time point to write (if None, max(LT.to_take_time) is taken)
+                    note: if there is no 'to_take_time' attribute, self.time_nodes is considered instead
+                        (historical)
+                length: int, length of the track to print (how many time before).
+                manual_labels: {id: label, }, dictionary that maps cell ids to 
+                default_label: int, default value for the manual label
+                new_pos: {id: [x, y, z]}, dictionary that maps a 3D position to a cell ID.
+                    if new_pos == None (default) then self.pos is considered.
+        '''
+        if not hasattr(self, 'to_take_time'):
+            self.to_take_time = self.time_nodes
+        if t_b is None:
+            t_b = min(self.to_take_time.keys())
+        if t_e is None:
+            t_e = max(self.to_take_time.keys())
+        if new_pos is None:
+            new_pos = self.pos
+
+        if manual_labels is None:
+            manual_labels = {}
+        for t in range(t_b, t_e + 1):
+            f = open(path_format%t, 'w')
+            nb_points = len(self.to_take_time[t])
+            self._write_header_am(f, nb_points, length)
+            points_v = {}
+            for C in self.to_take_time[t]:
+                C_tmp = C
+                positions = []
+                for i in xrange(length):
+                    C_tmp = self.predecessor.get(C_tmp, [C_tmp])[0]
+                    positions.append(new_pos[C_tmp])
+                points_v[C] = positions
+
+            f.write('@1\n')
+            for i, C in enumerate(self.to_take_time[t]):
+                f.write('%f %f %f\n'%tuple(points_v[C][0]))
+                f.write('%f %f %f\n'%tuple(points_v[C][-1]))
+
+            f.write('@2\n')
+            for i, C in enumerate(self.to_take_time[t]):
+                f.write('%d %d\n'%(2*i, 2*i+1))
+
+            f.write('@3\n')
+            for i, C in enumerate(self.to_take_time[t]):
+                f.write('%d\n'%(length))
+
+            f.write('@4\n')
+            tmp_velocity = {}
+            for i, C in enumerate(self.to_take_time[t]):
+                for p in points_v[C]:
+                    f.write('%f %f %f\n'%tuple(p))
+
+            f.write('@5\n')
+            for i, C in enumerate(self.to_take_time[t]):
+                f.write('%f\n'%(manual_labels.get(C, default_label)))
+                f.write('%f\n'%(0))
+
+            f.write('@6\n')
+            for i, C in enumerate(self.to_take_time[t]):
+                f.write('%d\n'%(int(manual_labels.get(C, default_label) != default_label)))
+                f.write('%d\n'%(0))
+            
+            f.write('@7\n')
+            for i, C in enumerate(self.to_take_time[t]):
+                f.write('%f\n'%(np.linalg.norm(points_v[C][0] - points_v[C][-1])))
+
+            f.write('@8\n')
+            for i, C in enumerate(self.to_take_time[t]):
+                f.write('%d\n'%(1))
+                f.write('%d\n'%(0))
+            f.close()
+
+
     def to_tlp(self, fname, t_min=-1, t_max=np.inf, nodes_to_use=None, temporal=True, spatial=False,
                VF=False, write_layout=True, node_properties = None):
         '''
@@ -313,11 +413,57 @@ class lineageTree(object):
             med = [0, 0, 0]
         return C, med
     
-    def read_from_pkl_ASTEC(self, file):
+    def read_from_csv(self, file_path, z_mult):
+        with open(file_path) as f:
+            lines = f.readlines()
+            f.close()
+        self.time_nodes = {}
+        self.time_edges = {}
+        unique_id = 0
+        self.nodes = set()
+        self.edges = set()
+        self.successor = {}
+        self.predecessor = {}
+        self.pos = {}
+        self.time_id = {}
+        self.time = {}
+        self.lin = {}
+        self.C_lin = {}
+        lines_to_int = []
+        corres = {}
+        for l in lines:
+            lines_to_int += [[int(v.strip()) for v in l.split(',')]]
+        lines_to_int = np.array(lines_to_int)
+        lines_to_int = lines_to_int[np.argsort(lines_to_int[:, 1])]
+        for l in lines_to_int:
+            id_, t, z, y, x, pred, lin_id = l
+            pos = np.array([x, y, z])
+            C = unique_id
+            corres[id_] = C
+            pos[-1] = pos[-1]*z_mult
+            if pred in corres:
+                M = corres[pred]
+                self.predecessor[C] = [M]
+                self.successor.setdefault(M, []).append(C)
+                self.edges.add((M, C))
+                self.time_edges.setdefault(t, []).append((M, C))
+            self.pos[C] = pos
+            self.nodes.add(C)
+            self.time_nodes.setdefault(t, []).append(C)
+            # self.time_id[(t, cell_id)] = C
+            self.time[C] = t
+            self.lin.setdefault(lin_id, []).append(C)
+            self.C_lin[C] = lin_id
+            unique_id += 1
+        self.max_id = unique_id - 1
+
+
+
+    def read_from_pkl_ASTEC(self, file_path):
         import cPickle as pkl
-        f = open(file)
-        tmp_data = pkl.load(f)
-        f.close()
+        with open(file_path) as f:
+            tmp_data = pkl.load(f)
+            f.close()
         self.name = {}
         self.volume = {}
         self.lT2pkl = {}
@@ -330,8 +476,10 @@ class lineageTree(object):
             lt = tmp_data['Lineage tree']
         if 'cell_name' in tmp_data:
             names = tmp_data['cell_name']
-        else:
+        elif 'Names' in tmp_data:
             names = tmp_data['Names']
+        else:
+            names = {}
         if 'cell_volume' in tmp_data:
             do_volumes = True
             volumes = tmp_data['cell_volume']
@@ -1124,7 +1272,7 @@ class lineageTree(object):
                 C1.N.append(C2)
 
     def __init__(self, file_format, tb = None, te = None, z_mult = 1., mask = None,
-                 MaMuT = False, celegans = False, ASTEC = False):
+                 MaMuT = False, celegans = False, ASTEC = False, csv = False):
         ''' Main library to build tree graph representation of TGMM and SVF data
             It can read TGMM xml outputs, MaMuT files and binary files (see to_binary and read_from_binary)
             Args:
@@ -1163,5 +1311,7 @@ class lineageTree(object):
             self.read_from_txt_for_celegans(file_format)
         elif not (file_format is None) and ASTEC:
             self.read_from_pkl_ASTEC(file_format)
+        elif not (file_format is None) and csv:
+            self.read_from_csv(file_format, z_mult)
         elif not (file_format is None):
             self.read_from_binary(file_format)
