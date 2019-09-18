@@ -56,7 +56,7 @@ class lineageTree(object):
         else:
             return self.next_id.pop()
 
-    def add_node(self, t, succ, pos, id = None, reverse = False):
+    def add_node(self, t, succ, pos, id=None, reverse=False):
         ''' Adds a node to the lineageTree and update it accordingly.
             Args:
                 t: int, time to which to add the node
@@ -166,8 +166,8 @@ class lineageTree(object):
         f.write('EDGE { float Ecolor } @7\n')
         f.write('VERTEX { int Vbool2 } @8\n')
 
-    def write_to_am(self, path_format, t_b = None, t_e = None, length = 5, manual_labels = None, 
-                      default_label = 5, new_pos = None):
+    def write_to_am(self, path_format, t_b=None, t_e=None, length=5, manual_labels=None, 
+                      default_label=5, new_pos=None):
         ''' Writes a lineageTree into an Amira readable data (.am format).
             Args:
                 path_format: string, path to the output. It should contain 1 %03d where the time step will be entered
@@ -246,7 +246,7 @@ class lineageTree(object):
 
 
     def to_tlp(self, fname, t_min=-1, t_max=np.inf, nodes_to_use=None, temporal=True, spatial=False,
-               VF=False, write_layout=True, node_properties = None, Names = False):
+               VF=False, write_layout=True, node_properties=None, Names=False):
         '''
         Write a lineage tree into an understable tulip file
         Args:
@@ -391,7 +391,7 @@ class lineageTree(object):
         else:
             return [0, 0, 0]
 
-    def build_median_vector(self, C, dist_th, delta_t = 2):
+    def build_median_vector(self, C, dist_th, delta_t=2):
         ''' Computes the median vector for a cell *C*. *WARNING DEPRECATED*
             Since deprecated, no more doc.
         '''
@@ -513,7 +513,7 @@ class lineageTree(object):
 
 
 
-    def read_from_pkl_ASTEC(self, file_path):
+    def read_from_pkl_ASTEC(self, file_path, eigen=False):
         import cPickle as pkl
         with open(file_path) as f:
             tmp_data = pkl.load(f)
@@ -553,6 +553,11 @@ class lineageTree(object):
             prob_cells = set(tmp_data['problematic_cells'])
         else:
             prob_cells = set()
+        if eigen:
+            self.eigen_vectors = {}
+            self.eigen_values = {}
+            eig_val = tmp_data['cell_principal_values']
+            eig_vec = tmp_data['cell_principal_vectors']
             
         inv = {vi: [c] for c, v in lt.iteritems() for vi in v}
         nodes = set(lt).union(inv)
@@ -573,14 +578,17 @@ class lineageTree(object):
             self.lT2pkl[unique_id] = n
             self.pkl2lT[n] = unique_id
             self.name[unique_id] = names.get(n, '')
-            if do_volumes:
-                self.volume[unique_id] = volumes.get(n, 0.)
-            position = np.array(pos.get(n, [0, 0, 0]), dtype = np.float)
+            position = np.array(pos.get(n, [0, 0, 0]), dtype=np.float)
             self.time_nodes.setdefault(t, []).append(unique_id)
             self.nodes += [unique_id]
             self.pos[unique_id] = position
             self.time[unique_id] = t
             id_corres[n] = unique_id
+            if do_volumes:
+                self.volume[unique_id] = volumes.get(n, 0.)
+            if eigen:
+                self.eigen_vectors[unique_id] = eig_vec.get(n)
+                self.eigen_values[unique_id] = eig_val.get(n)
             unique_id += 1
         # self.contact = {self.pkl2lT[c]: v for c, v in surfaces.iteritems() if c in self.pkl2lT}
         if do_surf:
@@ -661,7 +669,7 @@ class lineageTree(object):
 
 
 
-    def read_from_xml(self, file_format, tb, te, z_mult=1., mask = None):
+    def read_from_xml(self, file_format, tb, te, z_mult=1., mask=None):
         ''' Reads a lineage tree from TGMM xml output.
             Args:
                 file_format: string, path to the xmls location.
@@ -773,10 +781,11 @@ class lineageTree(object):
             t = int(frame.attrib['frame'])
             self.time_nodes[t] = []
             for cell in frame:
-                cell_id, n, x, y, z = (int(cell.attrib['ID']), cell.attrib['name'],
-                                                 float(cell.attrib['POSITION_X']),
-                                                 float(cell.attrib['POSITION_Y']),
-                                                 float(cell.attrib['POSITION_Z']))
+                cell_id, n, x, y, z = (int(cell.attrib['ID']),
+                                       cell.attrib['name'],
+                                       float(cell.attrib['POSITION_X']),
+                                       float(cell.attrib['POSITION_Y']),
+                                       float(cell.attrib['POSITION_Z']))
                 self.time_nodes[t].append(cell_id)
                 self.nodes.append(cell_id)
                 self.pos[cell_id] = np.array([x, y, z])
@@ -807,7 +816,7 @@ class lineageTree(object):
         self.t_b = min(self.time_nodes.keys())
         self.t_e = max(self.time_nodes.keys())
     
-    def to_binary(self, fname, starting_points = None):
+    def to_binary(self, fname, starting_points=None):
         ''' Writes the lineage tree (a forest) as a binary structure
             (assuming it is a binary tree, it would not work for *n*ary tree with 2 < *n*).
             The binary file is composed of 3 sequences of numbers and
@@ -866,7 +875,7 @@ class lineageTree(object):
         f.close()
 
 
-    def read_from_binary(self, fname, reverse_time = False):
+    def read_from_binary(self, fname, reverse_time=False):
         ''' Reads a binary lineageTree file name.
             Format description:
                 see self.to_binary
@@ -1133,7 +1142,7 @@ class lineageTree(object):
             self.Gabriel_graph[t] = G_g
 
 
-    def build_VF_propagation_backward(self, t_b=0, t_e=200, nb_max=20, dist_max=200, nb_proc = 8):
+    def build_VF_propagation_backward(self, t_b=0, t_e=200, nb_max=20, dist_max=200, nb_proc=8):
         ''' Build the backward propagation from TGMM data. *WARNING DEPRECATED*
             Since deprecated, no more doc.
         '''
@@ -1236,7 +1245,7 @@ class lineageTree(object):
 
         return self.VF
 
-    def get_predecessors(self, x, depth = None):
+    def get_predecessors(self, x, depth=None):
         ''' Computes the predecessors of the node *x* up to
             *depth* predecessors. The ordered list of ids is returned
             Args:
@@ -1253,7 +1262,7 @@ class lineageTree(object):
             acc += 1
         return cycle
 
-    def get_successors(self, x, depth = None):
+    def get_successors(self, x, depth=None):
         ''' Computes the successors of the node *x* up to
             *depth* successors. The ordered list of ids is returned
             Args:
@@ -1270,7 +1279,7 @@ class lineageTree(object):
             acc += 1
         return cycle
 
-    def get_cycle(self, x, depth = None, depth_pred = None, depth_succ = None):
+    def get_cycle(self, x, depth=None, depth_pred=None, depth_succ=None):
         ''' Computes the predecessors and successors of the node *x* up to
             *depth_pred* predecessors plus *depth_succ* successors.
             If the value *depth* is provided and not None,
@@ -1330,7 +1339,7 @@ class lineageTree(object):
 
     def __init__(self, file_format, tb=None, te=None, z_mult=1., mask=None,
                  MaMuT=False, celegans=False, ASTEC=False, csv=False,
-                 link=True, delim=','):
+                 link=True, delim=',', eigen=False):
         ''' Main library to build tree graph representation of TGMM and SVF data
             It can read TGMM xml outputs, MaMuT files and binary files (see to_binary and read_from_binary)
             Args:
@@ -1368,7 +1377,7 @@ class lineageTree(object):
         elif not (file_format is None) and celegans:
             self.read_from_txt_for_celegans(file_format)
         elif not (file_format is None) and ASTEC:
-            self.read_from_pkl_ASTEC(file_format)
+            self.read_from_pkl_ASTEC(file_format, eigen)
         elif not (file_format is None) and csv:
             self.read_from_csv(file_format, z_mult, link=link, delim=delim)
         elif not (file_format is None):
