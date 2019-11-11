@@ -712,7 +712,7 @@ class lineageTree(object):
             self.time_nodes[t] = []
             self.time_edges[t] = []
             for it in root:
-                if not '-1.#IND' in it.attrib['m']:
+                if not '-1.#IND' in it.attrib['m'] and not 'nan' in it.attrib['m']:
                     M_id, pos, cell_id, svIdx, lin_id = (int(it.attrib['parent']), 
                                                 [float(v) for v in it.attrib['m'].split(' ') if v!=''], 
                                                 int(it.attrib['id']),
