@@ -288,12 +288,12 @@ class lineageTree(object):
 
         if not nodes_to_use:
             if t_max!=np.inf or -1<t_min:
-                nodes_to_use = [n for n in self.nodes if t_min<n.time<=t_max]
+                nodes_to_use = [n for n in self.nodes if t_min<self.time[n]<=t_max]
                 edges_to_use = []
                 if temporal:
-                    edges_to_use += [e for e in self.edges if t_min<e[0].time<t_max]
+                    edges_to_use += [e for e in self.edges if t_min<self.time[e[0]]<t_max]
                 if spatial:
-                    edges_to_use += [e for e in self.spatial_edges if t_min<e[0].time<t_max]
+                    edges_to_use += [e for e in self.spatial_edges if t_min<self.time[e[0]]<t_max]
             else:
                 nodes_to_use = list(self.nodes)
                 edges_to_use = []
@@ -316,7 +316,7 @@ class lineageTree(object):
             nodes_to_use = set(nodes_to_use).difference(order_on_nodes)
             tmp_names = {}
             for k, v in node_properties[Names][0].iteritems():
-                if len(self.successor.get(self.predecessor.get(k, [-1])[0], [])) != 1:
+                if len(self.successor.get(self.predecessor.get(k, [-1])[0], [])) != 1 or self.time[k]==t_min+1:
                     tmp_names[k] = v
             node_properties[Names][0] = tmp_names
             for n in order_on_nodes:
@@ -719,7 +719,7 @@ class lineageTree(object):
             self.time_nodes[t] = []
             self.time_edges[t] = []
             for it in root:
-                if not '-1.#IND' in it.attrib['m']:
+                if not '-1.#IND' in it.attrib['m'] and not 'nan' in it.attrib['m']:
                     M_id, pos, cell_id, svIdx, lin_id = (int(it.attrib['parent']), 
                                                 [float(v) for v in it.attrib['m'].split(' ') if v!=''], 
                                                 int(it.attrib['id']),
