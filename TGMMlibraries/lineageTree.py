@@ -536,6 +536,10 @@ class lineageTree(object):
             names = tmp_data['Names']
         else:
             names = {}
+        if 'cell_fate' in tmp_data:
+            do_fates = True
+            self.fates = {}
+            fates = tmp_data['cell_fate']
         if 'cell_volume' in tmp_data:
             do_volumes = True
             volumes = tmp_data['cell_volume']
@@ -589,6 +593,9 @@ class lineageTree(object):
             if eigen:
                 self.eigen_vectors[unique_id] = eig_vec.get(n)
                 self.eigen_values[unique_id] = eig_val.get(n)
+            if do_fates:
+                self.fates[unique_id] = fates.get(n, '')
+                
             unique_id += 1
         # self.contact = {self.pkl2lT[c]: v for c, v in surfaces.iteritems() if c in self.pkl2lT}
         if do_surf:
