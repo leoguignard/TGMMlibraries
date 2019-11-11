@@ -321,6 +321,8 @@ class lineageTree(object):
             node_properties[Names][0] = tmp_names
             for n in order_on_nodes:
                f.write(str(n)+ " ")
+        else:
+            order_on_nodes = set()
 
         for n in nodes_to_use:
             f.write(str(n)+ " ")
