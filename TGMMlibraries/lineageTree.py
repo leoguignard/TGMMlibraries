@@ -538,7 +538,7 @@ class lineageTree(object):
             names = tmp_data['Names']
         else:
             names = {}
-        if do_fates:
+        if 'cell_fate' in tmp_data:
             self.fates = {}
             fates = tmp_data['cell_fate']
         else:
