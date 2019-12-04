@@ -541,6 +541,7 @@ class lineageTree(object):
         if 'cell_fate' in tmp_data:
             self.fates = {}
             fates = tmp_data['cell_fate']
+            do_fates = True
         else:
             do_fates = False
         if 'cell_volume' in tmp_data:
