@@ -248,7 +248,7 @@ class lineageTree(object):
         if c in done:
             return done[c][0]
         else:
-            P = np.mean([get_height(self, di, done) for di in self.successor[c]])
+            P = np.mean([self.get_height(di, done) for di in self.successor[c]])
             done[c] = [P, self.vert_space_factor*self.time[c]]
             return P
 
@@ -290,12 +290,13 @@ class lineageTree(object):
             stroke_width = lambda x: vert_space_factor/2.2
         if node_color is None:
             node_color = lambda x: (0, 0, 0)
-        if stroke_color is None:
+        coloring_edges = not stroke_color is None
+        if not coloring_edges:
             stroke_color = lambda x: (0, 0, 0)
         prev_x = 0
         self.vert_space_factor = vert_space_factor
-        if key is not None:
-            roots.sort(key=key)
+        if order_key is not None:
+            roots.sort(key=order_key)
         treated_cells = []
 
         pos_given = not positions is None
@@ -308,20 +309,21 @@ class lineageTree(object):
                 curr = to_do.pop(0)
                 treated_cells += [curr]
                 if curr in self.successor:
-                    if key is not None:
+                    if order_key is not None:
                         to_do += sorted(self.successor[curr], key=order_key)
                     else:
                         to_do += self.successor[curr]
                 else:
                     r_leaves += [curr]
-            r_pos = {l: [prev_x+horizontal_space*(1+j), self.vert_space_factor*self.time[l]] for j, l in enumerate(r_leaves)}
+            r_pos = {l: [prev_x+horizontal_space*(1+j), self.vert_space_factor*self.time[l]]
+                         for j, l in enumerate(r_leaves)}
             self.get_height(r, r_pos)
-            prev_x = np.max(r_pos.values(), axis=0)[0]
+            prev_x = np.max(list(r_pos.values()), axis=0)[0]
             if not pos_given:
                 positions.update(r_pos)
 
-        dwg = svgwrite.Drawing(file_name, profile='tiny', size=factor*np.max(positions.values(), axis=0))
-        if draw_edges and not draw_nodes and stroke_color is None:
+        dwg = svgwrite.Drawing(file_name, profile='tiny', size=factor*np.max(list(positions.values()), axis=0))
+        if draw_edges and not draw_nodes and not coloring_edges:
             to_do = set(treated_cells)
             while 0<len(to_do):
                 curr = to_do.pop()
@@ -339,7 +341,9 @@ class lineageTree(object):
                 for si in self.successor.get(c, []):
                     x2, y2 = positions[si]
                     if draw_edges:
-                        dwg.add(dwg.line((factor*x1, factor*y1), (factor*x2, factor*y2), stroke=svgwrite.rgb(*(stroke_color(si))), stroke_width=svgwrite.pt(stroke_width(si))))
+                        dwg.add(dwg.line((factor*x1, factor*y1), (factor*x2, factor*y2),
+                                stroke=svgwrite.rgb(*(stroke_color(si))),
+                                stroke_width=svgwrite.pt(stroke_width(si))))
             for c in treated_cells:
                 x1, y1 = positions[c]
                 if draw_nodes:
@@ -546,12 +550,6 @@ class lineageTree(object):
         else:
             med = [0, 0, 0]
         return C, med
-
-    def print_to_SVG(self, file):
-        positions = dict(zip(nodes, [[0., 0., 0.],]*len(nodes)))
-        leaves = set(self.predecessor).difference(self.successor)
-        roots = set(self.successor).difference(self.predecessor)
-
 
     def read_from_csv(self, file_path, z_mult, link=1, delim=','):
         def convert_for_csv(v):
