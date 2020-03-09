@@ -56,7 +56,7 @@ class lineageTree(object):
         else:
             return self.next_id.pop()
 
-    def add_node(self, t, succ, pos, id=None, reverse=False):
+    def add_node(self, t=None, succ=None, pos=None, id=None, reverse=False):
         ''' Adds a node to the lineageTree and update it accordingly.
             Args:
                 t: int, time to which to add the node
@@ -517,8 +517,8 @@ class lineageTree(object):
 
     def read_from_pkl_ASTEC(self, file_path, eigen=False):
         import pickle as pkl
-        with open(file_path) as f:
-            tmp_data = pkl.load(f)
+        with open(file_path, 'rb') as f:
+            tmp_data = pkl.load(f, encoding="latin1")
             f.close()
         self.name = {}
         self.volume = {}
@@ -639,7 +639,7 @@ class lineageTree(object):
             'Z3': 'P4'
         }        
 
-        f = open(file)
+        f = open(file, 'r')
         raw = f.readlines()[1:]
         f.close()
         self.name = {}
@@ -1348,7 +1348,7 @@ class lineageTree(object):
             for C1, C2 in to_link:
                 C1.N.append(C2)
 
-    def __init__(self, file_format, tb=None, te=None, z_mult=1., mask=None,
+    def __init__(self, file_format=None, tb=None, te=None, z_mult=1., mask=None,
                  MaMuT=False, celegans=False, ASTEC=False, csv=False,
                  link=True, delim=',', eigen=False):
         ''' Main library to build tree graph representation of TGMM and SVF data
